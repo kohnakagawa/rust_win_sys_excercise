@@ -38,15 +38,29 @@ fn make_process_entry() -> PROCESSENTRY32 {
     }
 }
 
-fn make_snapshot(dw_flags: u32, th32_process_id: u32) -> Result<HANDLE, std::io::Error>{
-    match unsafe {CreateToolhelp32Snapshot(dw_flags, th32_process_id)} {
-        INVALID_HANDLE_VALUE => {Err(std::io::Error::last_os_error())},
-        handle => {Ok(handle)},
+struct HandleWrapper {
+    raw_data: HANDLE
+}
+
+impl HandleWrapper {
+    pub fn new(handle_raw: HANDLE) -> HandleWrapper {
+        HandleWrapper {
+            raw_data: handle_raw
+        }
     }
 }
 
-fn delete_snapshot(handle: HANDLE) {
-    unsafe {CloseHandle(handle)};
+impl Drop for HandleWrapper {
+    fn drop(&mut self) {
+        unsafe {CloseHandle(self.raw_data)};
+    }
+}
+
+fn make_snapshot(dw_flags: u32, th32_process_id: u32) -> Result<HandleWrapper, std::io::Error>{
+    match unsafe {CreateToolhelp32Snapshot(dw_flags, th32_process_id)} {
+        INVALID_HANDLE_VALUE => {Err(std::io::Error::last_os_error())},
+        handle => {Ok(HandleWrapper::new(handle))},
+    }
 }
 
 type Pid = u32;
@@ -58,16 +72,15 @@ fn make_process_list() -> Result<Vec<(Pid, String)>, Box<error::Error>> {
 
     let mut proc_list: Vec<(Pid, String)> = Vec::new();
     unsafe {
-        Process32First(h_snapshot, &mut proc_entry);
+        Process32First(h_snapshot.raw_data, &mut proc_entry);
         loop {
             let proc_name = CStr::from_ptr(&proc_entry.szExeFile[0]).to_str()?.to_string();
             let pid = proc_entry.th32ProcessID;
             proc_list.push((pid, proc_name));
-            if Process32Next(h_snapshot, &mut proc_entry) == FALSE { break; }
+            if Process32Next(h_snapshot.raw_data, &mut proc_entry) == FALSE { break; }
         }
     }
 
-    delete_snapshot(h_snapshot);
     Ok(proc_list)
 }
 
@@ -78,15 +91,14 @@ fn make_module_list(pid: Pid) -> Result<Vec<String>, Box<error::Error>> {
 
     let mut mod_list: Vec<String> = Vec::new();
     unsafe {
-        Module32First(h_snapshot, &mut mod_entry);
+        Module32First(h_snapshot.raw_data, &mut mod_entry);
         loop {
-            if Module32Next(h_snapshot, &mut mod_entry) == FALSE { break; }
+            if Module32Next(h_snapshot.raw_data, &mut mod_entry) == FALSE { break; }
             let mod_name = CStr::from_ptr(&mod_entry.szModule[0]).to_str()?.to_string();
             mod_list.push(mod_name);
         }
     }
 
-    delete_snapshot(h_snapshot);
     Ok(mod_list)
 }
 
