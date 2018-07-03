@@ -1,3 +1,1 @@
-# Rust Excercise
-- Rustでのシステムプログラミング練習リポジトリ
-
+# Rust Windows system programming excercise repo
